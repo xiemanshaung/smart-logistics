@@ -1,16 +1,21 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
 
-// Vite 配置：启用 React 插件，并把 /api 请求代理到 FastAPI
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: true, // 允许外部访问（Docker、局域网）
+    host: true, // 监听所有 IP，必须保留
     proxy: {
-      "/api": {
-        target: "http://backend:8000", // docker-compose 中 backend 服务
-        changeOrigin: true,
-      },
+      '/api': {
+        target: 'http://backend:8000',
+        changeOrigin: true
+      }
     },
-  },
-});
+    watch: {
+      usePolling: true,   // 强制轮询 (Docker 下必须)
+    },
+    hmr: {
+      clientPort: 5173    // 明确告诉浏览器热更新走 5173 端口
+    }
+  }
+})

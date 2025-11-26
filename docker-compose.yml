@@ -1,15 +1,28 @@
 version: '3.8'
-
-# 一次性启动前后端两套服务
 services:
   backend:
-    build: ./backend        # 使用 backend/Dockerfile
+    build: ./backend
     ports:
-      - "8000:8000"         # 暴露 FastAPI 接口
+      - "8000:8000"
+    depends_on:
+      - osrm
+    environment:
+      - OSRM_HOST=http://osrm:5000
 
   frontend:
-    build: ./frontend       # 使用 frontend/Dockerfile
+    build: ./frontend
     ports:
-      - "5173:5173"         # Vite dev server 默认端口
+      - "5173:5173"
     depends_on:
-      - backend             # 等待后端先启动，避免 404
+      - backend
+    volumes:
+      - ./frontend:/app           # 1. 把本地 frontend 文件夹映射到容器的 /app
+      - /app/node_modules         # 2. 保护容器内的 node_modules 不被本地覆盖(匿名卷)
+
+  osrm:
+    image: osrm/osrm-backend
+    command: "osrm-routed --algorithm mld /data/us-northeast.osrm"
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./osrm-data:/data
