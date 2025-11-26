@@ -1,4 +1,5 @@
 version: '3.8'
+
 services:
   backend:
     build: ./backend
@@ -7,7 +8,13 @@ services:
     depends_on:
       - osrm
     environment:
+      # 容器内部通信，使用服务名 osrm 和内部端口 5000
       - OSRM_HOST=http://osrm:5000
+    # --- 后端热更新配置 (Hot Reload) ---
+    volumes:
+      - ./backend:/app            # 映射本地代码到容器
+    # 覆盖默认启动命令，增加 --reload 参数
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
     build: ./frontend
@@ -15,14 +22,18 @@ services:
       - "5173:5173"
     depends_on:
       - backend
+    # --- 前端热更新配置 (Hot Reload) ---
     volumes:
-      - ./frontend:/app           # 1. 把本地 frontend 文件夹映射到容器的 /app
-      - /app/node_modules         # 2. 保护容器内的 node_modules 不被本地覆盖(匿名卷)
+      - ./frontend:/app           # 映射本地代码
+      - /app/node_modules         # 保护容器内的依赖不被覆盖
 
   osrm:
-    image: osrm/osrm-backend
+    image: osrm/osrm-backend:latest
+    # 注意：如果你本地 ./osrm-data 文件夹里没有地图数据，这个服务会启动失败退出。
+    # 但这不影响项目运行，因为后端代码里写了“连接失败自动降级为欧氏距离”。
     command: "osrm-routed --algorithm mld /data/us-northeast.osrm"
     ports:
+      # 左边改成 5001，避免与 macOS AirPlay 服务 (5000) 冲突
       - "5001:5000"
     volumes:
       - ./osrm-data:/data

@@ -11,28 +11,25 @@ def create_data_model(num_vehicles, locations):
     data['num_vehicles'] = num_vehicles
     data['depot'] = 0
 
-    # --- 核心修改：添加 CVRP 容量数据 ---
+    # --- 核心修改：添加 CVRP 容量数据，防止一辆车跑完所有点 ---
     
-    # 1. 定义每个地点的“需求量” (Demands)
-    # 规则：仓库(索引0)需求为0，其他所有客户点需求假设为 1 个单位
-    # (实际业务中，这里可以是包裹的重量、体积或数量)
+    # 1. 定义需求量 (Demands)
+    # 仓库需求为0，其他客户点需求为 1
     num_locations = len(locations)
     data['demands'] = [0] + [1] * (num_locations - 1)
 
-    # 2. 定义每辆车的“最大载重” (Vehicle Capacities)
-    # 逻辑：为了让多辆车都动起来，我们不能给无限容量。
-    # 我们动态计算：让每辆车的容量大约等于 (总需求 / 车辆数) * 1.2
-    # 这样一辆车肯定装不完，必须派其他车。
+    # 2. 定义车辆容量 (Vehicle Capacities)
+    # 动态计算：让总容量仅比总需求多一点点 (1.2倍)，迫使算法必须使用多辆车
     total_demand = sum(data['demands'])
     
     if num_vehicles > 0:
-        # 动态计算容量，保留 20% 的余量 (Buffer)
         avg_demand = total_demand / num_vehicles
+        # 向上取整并留 20% 余量
         capacity_per_vehicle = math.ceil(avg_demand * 1.2)
-        # 兜底：防止容量过小
+        # 兜底：防止容量过小无法配送
         capacity_per_vehicle = max(int(capacity_per_vehicle), 5)
     else:
-        capacity_per_vehicle = 100 # Fallback
+        capacity_per_vehicle = 100 
 
     data['vehicle_capacities'] = [capacity_per_vehicle] * num_vehicles
 
@@ -43,26 +40,29 @@ def create_data_model(num_vehicles, locations):
 def compute_euclidean_distance_matrix(locations):
     """
     计算欧氏距离矩阵 (作为 OSRM 失败时的备选)
+    返回 List[List[int]] 格式，保持与 OSRM 格式一致
     """
-    distances = {}
-    for from_counter, from_node in enumerate(locations):
-        distances[from_counter] = {}
-        for to_counter, to_node in enumerate(locations):
-            if from_counter == to_counter:
-                distances[from_counter][to_counter] = 0
+    size = len(locations)
+    matrix = [[0] * size for _ in range(size)]
+    
+    for i in range(size):
+        for j in range(size):
+            if i == j:
+                matrix[i][j] = 0
             else:
-                # 欧氏距离公式：sqrt((x1-x2)^2 + (y1-y2)^2)
-                # 乘以 1000 是为了放大数值，避免 int 截断太严重
-                distances[from_counter][to_counter] = int(math.hypot(
-                    from_node[0] - to_node[0],
-                    from_node[1] - to_node[1]
-                ) * 1000)
-    return distances
+                # 粗略估算：1度 ≈ 111km = 111000米
+                # 这只是个估值，用来做 Fallback 足够了
+                dist = math.hypot(
+                    locations[i][0] - locations[j][0],
+                    locations[i][1] - locations[j][1]
+                ) * 111000
+                matrix[i][j] = int(dist)
+    return matrix
 
 def solve_vrp(num_vehicles, locations, external_matrix=None):
     """
     求解 VRP 问题
-    :param external_matrix: 如果有外部(如OSRM)提供的真实距离矩阵，则优先使用
+    :param external_matrix: 外部传入的真实距离矩阵 (OSRM)
     """
     # 1. 创建数据模型
     data = create_data_model(num_vehicles, locations)
@@ -73,28 +73,26 @@ def solve_vrp(num_vehicles, locations, external_matrix=None):
     # 3. 创建路由模型
     routing = pywrapcp.RoutingModel(manager)
 
-    # 4. 定义距离回调函数
+    # 4. 确定距离矩阵 (OSRM vs Euclidean)
     if external_matrix:
-        # 使用外部传入的真实矩阵 (OSRM)
         distance_matrix = external_matrix
     else:
-        # 使用内部计算的欧氏距离
         distance_matrix = compute_euclidean_distance_matrix(data['locations'])
 
+    # 5. 注册距离回调
     def distance_callback(from_index, to_index):
-        # 将 RoutingIndex 转换为 NodeIndex
         from_node = manager.IndexToNode(from_index)
         to_node = manager.IndexToNode(to_index)
+        # List[List] 和 Dict[Dict] 的访问方式是一样的 [i][j]
         return distance_matrix[from_node][to_node]
 
     transit_callback_index = routing.RegisterTransitCallback(distance_callback)
 
-    # 定义每条边的成本 (这里成本 = 距离)
+    # 6. 设置每条边的成本
     routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
 
     # --- 核心修改：添加容量约束 (Capacity Constraint) ---
     def demand_callback(from_index):
-        """返回当前节点的需求量"""
         from_node = manager.IndexToNode(from_index)
         return data['demands'][from_node]
 
@@ -102,28 +100,27 @@ def solve_vrp(num_vehicles, locations, external_matrix=None):
 
     routing.AddDimensionWithVehicleCapacity(
         demand_callback_index,
-        0,  # null_capacity_slack: 容量松弛度 (通常为0)
-        data['vehicle_capacities'],  # 每辆车的容量上限数组
-        True,  # start_cumul_to_zero: 起点累积量是否强制为0
-        'Capacity'  # 维度名称
+        0,  # null_capacity_slack
+        data['vehicle_capacities'],  # 车辆容量数组
+        True,  # start_cumul_to_zero
+        'Capacity'
     )
     # -----------------------------------------------
 
-    # 5. 设置搜索策略 (使用引导式局部搜索 Guided Local Search 以跳出局部最优)
+    # 7. 设置搜索策略 (使用引导式局部搜索以跳出局部最优)
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     search_parameters.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC)
     
-    # 开启局部搜索 (Metaheuristic) - 这样结果会更均衡
+    # 开启 GLOP (Guided Local Search) 让结果更均衡
     search_parameters.local_search_metaheuristic = (
         routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH)
-    # 限制计算时间 (防止算太久)
-    search_parameters.time_limit.seconds = 1
+    search_parameters.time_limit.seconds = 1  # 限制计算时间
 
-    # 6. 求解
+    # 8. 求解
     solution = routing.SolveWithParameters(search_parameters)
 
-    # 7. 格式化输出结果
+    # 9. 格式化输出
     routes = []
     if solution:
         for vehicle_id in range(data['num_vehicles']):
@@ -134,11 +131,11 @@ def solve_vrp(num_vehicles, locations, external_matrix=None):
                 route.append(node_index)
                 index = solution.Value(routing.NextVar(index))
             
-            # 添加终点 (回到仓库)
+            # 添加终点 (仓库)
             node_index = manager.IndexToNode(index)
             route.append(node_index)
             
-            # 只有当车辆确实跑了客户才加入结果 (过滤掉没干活的车)
+            # 过滤：如果路径长度<=2 (只有仓库->仓库)，说明这辆车没干活
             if len(route) > 2:
                 routes.append(route)
     
