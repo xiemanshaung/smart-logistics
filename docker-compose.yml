@@ -1,0 +1,15 @@
+version: '3.8'
+
+# 一次性启动前后端两套服务
+services:
+  backend:
+    build: ./backend        # 使用 backend/Dockerfile
+    ports:
+      - "8000:8000"         # 暴露 FastAPI 接口
+
+  frontend:
+    build: ./frontend       # 使用 frontend/Dockerfile
+    ports:
+      - "5173:5173"         # Vite dev server 默认端口
+    depends_on:
+      - backend             # 等待后端先启动，避免 404
