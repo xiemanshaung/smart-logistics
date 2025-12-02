@@ -1,0 +1,77 @@
+# Python 缓存文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 虚拟环境
+venv/
+env/
+ENV/
+.venv
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# Node.js 依赖
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 构建输出
+dist/
+build/
+*.egg-info/
+
+# 环境变量文件
+.env
+.env.local
+
+# 日志文件
+*.log
+
+# Docker
+.dockerignore
+
+# 测试覆盖率
+.coverage
+htmlcov/
+
+# 临时文件
+*.tmp
+*.temp
+
+# 项目特定文件
+test.txt
+总览.png
+osrm-data/
+
+# Python 字节码文件（更完整的匹配）
+*.pyc
+*.pyo
+*.pyd
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+
+# 压缩文件（如果不需要提交）
+*.zip
+*.tar.gz
+*.rar
+
+# 配置文件（如果包含敏感信息）
+config.local.*
+settings.local.*
+

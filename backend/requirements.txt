@@ -1,6 +1,4 @@
 fastapi
 uvicorn
-numpy
 ortools
 pydantic
-requests 
