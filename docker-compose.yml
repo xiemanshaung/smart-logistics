@@ -1,6 +1,27 @@
 version: '3.8'
 
 services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: dreo-postgres
+    environment:
+      POSTGRES_USER: dreo_user
+      POSTGRES_PASSWORD: dreo_password
+      POSTGRES_DB: dreo_logistics
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+    networks:
+      - dreo-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dreo_user -d dreo_logistics"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # 后端服务 (FastAPI + OR-Tools)
   backend:
     build: ./backend
@@ -11,6 +32,10 @@ services:
       - ./backend/app:/app/app # 代码热更新映射
     environment:
       - ALLOW_ORIGINS=http://localhost:3000
+      - DATABASE_URL=postgresql://dreo_user:dreo_password@postgres:5432/dreo_logistics
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - dreo-network
 
@@ -28,6 +53,9 @@ services:
       - backend
     networks:
       - dreo-network
+
+volumes:
+  postgres_data:
 
 networks:
   dreo-network:

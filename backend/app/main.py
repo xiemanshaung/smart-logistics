@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import router
+from app.database import engine, Base
+from app.db_models import Order, OrderItem, SKU
 
 app = FastAPI(title="DREO Supply Chain Algorithm Engine")
 
@@ -12,6 +14,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 应用启动时初始化数据库表
+@app.on_event("startup")
+async def startup_event():
+    """应用启动时创建数据库表（如果不存在）"""
+    Base.metadata.create_all(bind=engine)
+    print("✅ 数据库连接已建立，表结构已检查")
 
 # 注册路由
 app.include_router(router, prefix="/api")
